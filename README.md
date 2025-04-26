@@ -1,17 +1,37 @@
-# quantitative_analysis_soccer_player_wages
-Project Overview
-This project provides a thorough quantitative analysis of factors influencing soccer players' wages, focusing on the predictive power of contract length and various player attributes using data from the FIFA video game series.
+# FIFA-Wages Analysis & Offline A/B-Test Simulation
 
-Objectives
-To analyze the wage disparity between players with long-term contracts (valid until 2026 or later) and those with shorter-term contracts.
-To investigate the impact of age, international reputation, contract length, potential, and value on player wages.
+> Explore wage drivers in *FIFA 23* data & simulate a true A/B experiment that randomises contract length.
 
-Methodology
-Data Preparation: Cleaned and formatted a comprehensive dataset for analysis. Implemented log transformation to stabilize variance and normalize wage data.
-Statistical Analysis: Conducted Shapiro-Wilk tests, Q-Q plot analysis, variance tests, and non-parametric tests to assess normality and variance of wage data.
-Modeling: Applied Generalized Linear Models (GLM) to evaluate the impact of various predictors on wages.
-Missing Value Analysis: Performed GLM on datasets with missing values handled by mean and median imputation to assess the robustness of the models.
+---
 
-Results
-Hypothesis 1: Found no significant difference in wages between long and short-term contract players, indicating contract length does not significantly affect wages.
-Hypothesis 2: Identified age, international reputation, potential, and value as significant predictors of wages, while contract length was not significant.
+## Project Goals
+| ID | Objective |
+|----|-----------|
+| **O1** | Compare wages of long (≥ 2026) vs. short contracts. |
+| **O2** | Model wage as a function of age, international reputation, potential, and value. |
+| **O3** | Demonstrate an A/B-testing workflow in **R** and estimate the wage “lift” if clubs switch to longer deals. |
+
+---
+
+## Methodology
+1. **Data prep** – clean monetary fields, compute `log_wage`.
+2. **Diagnostics** – Shapiro-Wilk, Q-Q plots, variance tests, *t* / Mann-Whitney.
+3. **Model** – Gaussian GLM:  
+
+   \[
+   \log_{10}(\text{Wage}) \sim \text{Age} + \text{IntlRep} + \text{Potential} + \text{Value} + \text{ContractGroup}
+   \]
+
+4. **Missing-data robustness** – mean & median imputation, re-fit GLM.
+5. **Offline A/B simulation** – randomly force half the rows to `Contract.Valid.Until = 2027`, predict wages with the frozen GLM, test for lift, run 1 000 Monte-Carlo replications.
+
+---
+
+## Key Results
+| Hypothesis | Outcome |
+|------------|---------|
+| **H1** | No sig. wage gap between long & short contracts. |
+| **H2** | Age, Intl Rep, Potential, Value all ↑ wage (p < 0.001); Contract length non-sig. |
+| **A/B** | Mean simulated lift ≈ +1 %; only 22 % of sims reach p < 0.05 → echoes observational result. |
+
+---
