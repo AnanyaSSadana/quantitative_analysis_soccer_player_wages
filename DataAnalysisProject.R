@@ -203,3 +203,79 @@ Wage.Missing = impute(Wage.Missing,median)
 # international reputation, contract length, potential and values as predictor variables.
 WageModel <- glm(Wage.Missing~data$Age+international_reputation+contract_until+data$Potential+ values, family = gaussian())
 summary(WageModel)
+
+###############################################################
+#  SECTION 3 – TRUE A/B EXPERIMENT (offline simulation)      #
+###############################################################
+
+library(dplyr)        # pipes & mutate
+library(broom)        # tidy() for model output
+library(pwr)          # quick power calc
+library(ggplot2)
+
+## 3·1  Fit / reuse the baseline GLM --------------------------
+# If you already have a GLM called `model`, skip this chunk
+glm_base <- glm(
+  log_wage ~ Age + International.Reputation + contract_until +
+             Potential + values,
+  data   = data,
+  family = gaussian()
+)
+
+## 3·2  One-shot power sketch ---------------------------------
+# Detect a 5 % lift in mean wages on the original scale
+sd_log  <- sd(log_wage, na.rm = TRUE)
+delta   <- log10(1.05)                 # 5 % expressed in log-10 space
+n_arm   <- ceiling(
+  pwr.t.test(d = delta / sd_log,
+             sig.level = 0.05,
+             power     = 0.80,
+             type      = "two.sample")$n
+)                                      # ~4 000 per arm
+
+## 3·3  Helper that runs ONE experiment -----------------------
+simulate_once <- function(df, n_total) {
+  boot <- df %>% 
+    slice_sample(n = n_total, replace = TRUE) %>%            # bootstrap rows
+    mutate(arm = sample(c("C", "T"), n_total, replace = TRUE)) %>% 
+    mutate(Contract.Valid.Until = if_else(arm == "T", 2027, Contract.Valid.Until),
+           contract_group       = if_else(Contract.Valid.Until >= 2026,
+                                          "long", "short"))
+  
+  # predict synthetic outcomes with the frozen GLM
+  boot$pred_log_wage <- predict(glm_base, newdata = boot, type = "response")
+  
+  # Welch two-sample t-test
+  t_out  <- t.test(pred_log_wage ~ arm, data = boot)
+  
+  # lift on the original (euro) scale
+  lift   <- boot %>% 
+              group_by(arm) %>% 
+              summarise(mu = mean(10^pred_log_wage)) %>% 
+              summarise(lift = mu[arm=="T"]/mu[arm=="C"] - 1) %>% 
+              pull(lift)
+  
+  tibble(p_value = t_out$p.value, lift = lift)
+}
+
+## 3·4  Run 1 000 Monte-Carlo replications --------------------
+set.seed(42)
+n_total <- 2 * n_arm                       # ~8 000 rows
+mc      <- replicate(1000,
+                     simulate_once(data, n_total),
+                     simplify = FALSE) %>% 
+           bind_rows()
+
+## 3·5  Quick diagnostics -------------------------------------
+mc_summary <- mc %>% 
+  summarise(power_est    = mean(p_value < 0.05),
+            mean_lift_pc = mean(lift) * 100)
+
+print(mc_summary)
+#> power_est     mean_lift_pc
+#>     0.22            1.1   (example output)
+
+ggplot(mc, aes(lift*100)) +
+  geom_histogram(bins = 40) +
+  labs(title = "Distribution of estimated wage lift",
+       x = "Lift (%)", y = "Count")
